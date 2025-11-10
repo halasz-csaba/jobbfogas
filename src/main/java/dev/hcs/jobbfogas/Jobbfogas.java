@@ -149,6 +149,9 @@ public class Jobbfogas {
                 pageHasLinks = !newLinks.isEmpty();
                 ctx.itemLinks.addAll(newLinks);
             }
+            if(ctx.itemLinks.isEmpty()){
+                throw new RuntimeException("No items links found");
+            }
             LOGGER.info("Found {} links in {} pages", ctx.itemLinks.size(), paginationIdx);
         }
     }
@@ -280,24 +283,31 @@ public class Jobbfogas {
         List<String> ATTRS_FOR_AI = List.of("subject", "body", "capacity", "computer_cpu_type",
                 "computer_os", "computer_acc_brand");
 
-        // TODO make this configurable
-        private static final String USER_ASPECTS = """
-                - 150.000 Ft büdzsé
-                - jól fusson rajta minecraft, fortnite (fullHD 60fps)
-                - ne avuljon el még 3-4 évig
-                """;
+//        // TODO make this configurable
+//        private static final String USER_ASPECTS = """
+//                - 150.000 Ft büdzsé
+//                - jól fusson rajta minecraft, fortnite (fullHD 60fps)
+//                - ne avuljon el még 3-4 évig
+//                """;
 
         @Override
         public void execute(JobbfogasCtx ctx) {
             ctx.aiAnalysisRaw = new ConcurrentHashMap<>();
-            JobbfogasAiAssistant assistant = new JobbfogasDeepseekAssistant(cfg.deepSeekApiKey(), USER_ASPECTS);
-            ctx.parsedItems.keySet().parallelStream().limit(5).forEach((String itemLink) -> {
+            JobbfogasAiAssistant assistant = new JobbfogasDeepseekInterpreter(cfg.deepSeekApiKey());
+            ctx.parsedItems.keySet().parallelStream().forEach((String itemLink) -> {
                 Map<String, String> parsedItem = ctx.parsedItems.get(itemLink);
                 Map<String, String> itemForAi = new HashMap<>();
                 ATTRS_FOR_AI.forEach(key -> itemForAi.put(key, parsedItem.get(key)));
                 LOGGER.info("Sending AI analysis request for " + itemLink);
-                String aiResult = assistant.analyzeItem(itemForAi);
-                ctx.aiAnalysisRaw.put(itemLink, aiResult);
+                String aiResult = null;
+                try {
+                    aiResult = assistant.analyzeItem(itemForAi);
+                } catch (Exception e){
+                    LOGGER.error("Failed to get AI analysis for " + itemLink);
+                }
+                if(aiResult != null) {
+                    ctx.aiAnalysisRaw.put(itemLink, aiResult);
+                }
             });
         }
     }
@@ -344,6 +354,13 @@ public class Jobbfogas {
                     analysisResult = Map.of();
                 } else {
                     try {
+                        analysisRaw = analysisRaw.strip();
+                        if(analysisRaw.startsWith("```json")) {
+                            analysisRaw = analysisRaw.substring(7);
+                        }
+                        if(analysisRaw.endsWith("```")) {
+                            analysisRaw = analysisRaw.substring(0, analysisRaw.length()-3);
+                        }
                         analysisResult = mapper.readValue(analysisRaw, new TypeReference<>() {
                         });
                     } catch (JsonProcessingException e) {

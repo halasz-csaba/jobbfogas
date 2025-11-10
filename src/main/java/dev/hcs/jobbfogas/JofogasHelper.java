@@ -30,6 +30,8 @@ public class JofogasHelper {
 
     static Set<String> getLinksFromSearchResultPage(Document doc) {
         Set<String> links = new HashSet<>();
+
+        // get links from text search list
         for (Element titleElement : doc.select("h3.item-title")) {
             Element a = titleElement.selectFirst("a");
             if (a == null) {
@@ -38,6 +40,20 @@ public class JofogasHelper {
             String link = a.attr("href");
             links.add(link);
         }
+        if (!links.isEmpty()) {
+            return links;
+        }
+
+        // get links from category view
+        for (Element titleElement : doc.select("a.MuiLink-root.MuiLink-underlineNone")) {
+            Element a = titleElement.selectFirst("a");
+            if (a == null) {
+                LOGGER.error("No <a> found in titleElement: {}", titleElement);
+            }
+            String link = a.attr("href");
+            links.add(link);
+        }
+
         return links;
     }
 
